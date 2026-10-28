@@ -1,5 +1,9 @@
 
+import asyncio
+import os
 import time
+
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -36,6 +40,21 @@ from backend.vision_service import (
 
 app = FastAPI(title="NewQ API", version="0.3.0")
 add_hardening(app)
+
+
+@asynccontextmanager
+async def lifespan(_application: FastAPI):
+    """Publish server presence to Firestore for mobile auto-discovery."""
+    from backend import server_presence
+
+    await server_presence.start_presence(
+        int(os.getenv("NEWQ_PORT", "8000"))
+    )
+    yield
+    server_presence.stop_presence()
+
+
+app.router.lifespan_context = lifespan
 
 _STARTED_AT = time.monotonic()
 

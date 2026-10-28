@@ -1,24 +1,104 @@
 export const DEMO_MODE = false;
-export const API_BASE_URL = 'http://10.88.155.17:8000';
+export const API_BASE_URL = 'http://10.194.118.17:8000';
 
-// Stage 7b: the bundled base URL is only the DEFAULT. The Profile screen
-// can override it (stored via storage.js), so the PC's hotspot IP churn
-// no longer requires editing this file — update it from the app.
-import { getServerPreference } from './storage';
+// Stage 7b: the bundled base URL is only the last fallback. Resolution
+// order is: Profile override -> Firestore-published server address ->
+// bundled API_BASE_URL. The backend publishes its current LAN address to
+// Firestore (config/apiServer) every 60s, so hotspot IP churn no longer
+// breaks the app. A stale Profile override self-heals: if it fails the
+// health probe but a fresher candidate answers, the working address is
+// saved as the new preference.
+import { doc, getDoc } from 'firebase/firestore';
+import { db, isCloudEnabled } from './firebase';
+import { getServerPreference, saveServerPreference } from './storage';
 import { getFirebaseAuthToken } from './firebase';
 
-// Resolves the server the app should talk to right now:
-// Profile override -> bundled API_BASE_URL.
+// Resolves the server the app should talk to right now. Results are
+// cached for 60s so consecutive calls stay cheap.
 export async function getApiBaseUrl() {
-  try {
-    const override = await getServerPreference();
-    if (override) {
-      return override.replace(/\/+$/, '');
-    }
-  } catch (error) {
-    // Fall through to the bundled default on any storage failure.
+  if (resolutionCache && Date.now() - resolutionCache.at < RESOLUTION_TTL_MS) {
+    return resolutionCache.baseURL;
   }
-  return API_BASE_URL;
+
+  const storedOverride = await getServerPreference();
+  const override = storedOverride ? storedOverride.replace(/\/+$/, '') : '';
+
+  // 1) Profile override — honored only while it actually answers.
+  let baseURL = override;
+  if (baseURL && !(await probeHealth(baseURL))) {
+    baseURL = '';
+  }
+
+  // 2) Firestore-published address from the running backend.
+  if (!baseURL) {
+    const presence = await fetchPresenceBaseUrl();
+    if (presence && (await probeHealth(presence))) {
+      baseURL = presence;
+    }
+  }
+
+  // 3) Bundled default (last resort, keeps old behavior).
+  baseURL = baseURL || API_BASE_URL;
+
+  // Self-heal: when the stored override is stale and a fresher address
+  // answered, replace it so Profile shows the working server.
+  if (override && baseURL !== override) {
+    saveServerPreference(baseURL).catch(() => {});
+  }
+
+  resolutionCache = { baseURL, at: Date.now() };
+  return baseURL;
+}
+
+const RESOLUTION_TTL_MS = 60 * 1000;
+const PRESENCE_TTL_MS = 15 * 60 * 1000; // ignore heartbeats older than this
+const PROBE_TIMEOUT_MS = 3000;
+
+let resolutionCache = null;
+
+async function probeHealth(baseURL) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+    const response = await fetch(`${baseURL}/health`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Reads the backend's auto-published address. Stale heartbeats (>15 min)
+// are ignored so a PC that is shut down is never trusted.
+async function fetchPresenceBaseUrl() {
+  if (!isCloudEnabled()) {
+    return '';
+  }
+  try {
+    const snapshot = await getDoc(doc(db, 'config', 'apiServer'));
+    if (!snapshot.exists()) {
+      return '';
+    }
+    const data = snapshot.data() || {};
+    const host = String(data.host || '');
+    const port = Number(data.port) || 8000;
+    const updatedAt = Number(data.updatedAt) || 0;
+    if (!host || Date.now() - updatedAt > PRESENCE_TTL_MS) {
+      return '';
+    }
+    return `http://${host}:${port}`;
+  } catch (error) {
+    // Rules hiccup, offline, Firestore error — fall through to bundled.
+    return '';
+  }
+}
+
+// Forces the next getApiBaseUrl() to re-probe (used after connection
+// failures so a healed address is picked up immediately).
+export function invalidateServerResolution() {
+  resolutionCache = null;
 }
 
 export function isValidServerUrl(url) {

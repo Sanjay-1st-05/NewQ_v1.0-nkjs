@@ -179,3 +179,7 @@ export async function signOutUser() {
     lastAuthError = error?.code || error?.message || 'signout-error';
   }
 }
+
+// Stage 7b: Firestore handle for server-presence auto-discovery (api.js).
+// Null when Firebase is unconfigured — callers treat that as offline.
+export { db };
