@@ -929,29 +929,18 @@ export default function App() {
               accessibilityLabel="News article input"
             />
 
-            <View style={styles.inputFooter}>
-              <View style={styles.inputFooterLeft}>
+            {text.trim().length < 80 && (
+              <View style={styles.inputFooter}>
                 <Ionicons
-                  name="text-outline"
-                  size={14}
-                  color={palette.muted}
+                  name="information-circle-outline"
+                  size={13}
+                  color={palette.warning}
                 />
-                <Text style={styles.helper}>
-                  {text.length}/{NEWQ_TEXT_LIMIT}
+                <Text style={styles.helperWarning}>
+                  Add {80 - text.trim().length} more characters to analyze
                 </Text>
               </View>
-
-              <Text
-                style={[
-                  styles.helper,
-                  text.trim().length < 80 && styles.helperWarning,
-                ]}
-              >
-                {text.trim().length < 80
-                  ? `${80 - text.trim().length} more needed`
-                  : 'Ready to analyze'}
-              </Text>
-            </View>
+            )}
           </View>
 
           <Pressable
@@ -1079,10 +1068,6 @@ export default function App() {
               />
             </View>
           </View>
-
-          <Text style={styles.footerText}>
-            NEWQ · NEWS TO KNOWLEDGE
-          </Text>
         </ScrollView>
       )}
 
@@ -1098,9 +1083,6 @@ export default function App() {
             <View style={styles.pageHeadingCopy}>
               <Text style={styles.pageKicker}>GET STARTED</Text>
               <Text style={styles.pageTitle}>Choose Your Exam</Text>
-              <Text style={styles.pageSub}>
-                Get questions tailored to your exam.
-              </Text>
             </View>
           </View>
 
@@ -1158,7 +1140,6 @@ export default function App() {
             );
           })}
 
-          <Text style={styles.footerText}>NEWQ · NEWS TO KNOWLEDGE</Text>
         </ScrollView>
       )}
 
@@ -1177,9 +1158,6 @@ export default function App() {
             <View style={styles.pageHeadingCopy}>
               <Text style={styles.pageKicker}>YOUR RESULTS</Text>
               <Text style={styles.pageTitle}>News analysis</Text>
-              <Text style={styles.pageSub}>
-                An exam-focused breakdown of your article.
-              </Text>
             </View>
 
             <View style={styles.resultIcon}>
@@ -1357,18 +1335,6 @@ export default function App() {
               color={palette.navy}
             />
           </Pressable>
-
-          <View style={styles.disclaimer}>
-            <Ionicons
-              name="information-circle-outline"
-              size={17}
-              color={palette.cyan}
-            />
-            <Text style={styles.disclaimerText}>
-              NewQ prototype: review generated questions and source
-              evidence as part of your exam preparation.
-            </Text>
-          </View>
         </ScrollView>
       )}
 
@@ -1623,18 +1589,6 @@ export default function App() {
               />
             </Pressable>
           )}
-
-          {!(
-            Object.keys(answers).length > 0
-          ) && (
-            <Text style={styles.mutedBody}>
-              Select an option to reveal the explanation and continue.
-            </Text>
-          )}
-
-          <Text style={styles.footerText}>
-            KEEP LEARNING · KEEP PRACTISING
-          </Text>
         </ScrollView>
       )}
 
@@ -1783,10 +1737,6 @@ export default function App() {
               Try Another News
             </Text>
           </Pressable>
-
-          <Text style={styles.footerText}>
-            KEEP LEARNING · KEEP PRACTISING
-          </Text>
         </ScrollView>
       )}
 
@@ -1805,10 +1755,6 @@ export default function App() {
             <View style={styles.pageHeadingCopy}>
               <Text style={styles.pageKicker}>LEARN MORE</Text>
               <Text style={styles.pageTitle}>Detailed Explanation</Text>
-              <Text style={styles.pageSub}>
-                Every question with the correct answer, reasoning and
-                evidence.
-              </Text>
             </View>
 
             <View style={styles.resultIcon}>
@@ -1918,7 +1864,6 @@ export default function App() {
             </View>
           ))}
 
-          <Text style={styles.footerText}>NEWQ · NEWS TO KNOWLEDGE</Text>
         </ScrollView>
       )}
 
@@ -1934,9 +1879,6 @@ export default function App() {
             <View style={styles.pageHeadingCopy}>
               <Text style={styles.pageKicker}>RSS · CURRENT AFFAIRS</Text>
               <Text style={styles.pageTitle}>News feed</Text>
-              <Text style={styles.pageSub}>
-                Pick a headline to review its text before analysis.
-              </Text>
             </View>
 
             <Pressable
@@ -2042,7 +1984,6 @@ export default function App() {
             </>
           )}
 
-          <Text style={styles.footerText}>NEWQ · NEWS TO KNOWLEDGE</Text>
         </ScrollView>
       )}
 
@@ -2144,12 +2085,6 @@ export default function App() {
             />
           </Pressable>
 
-          <Text style={styles.disclaimerTextAlt}>
-            NewQ analyzes only the text shown above, exactly as provided by the
-            feed.
-          </Text>
-
-          <Text style={styles.footerText}>NEWQ · NEWS TO KNOWLEDGE</Text>
         </ScrollView>
       )}
 
@@ -2163,9 +2098,6 @@ export default function App() {
             <View style={styles.pageHeadingCopy}>
               <Text style={styles.pageKicker}>YOUR LIBRARY</Text>
               <Text style={styles.pageTitle}>History</Text>
-              <Text style={styles.pageSub}>
-                Past analyses and practice attempts, stored on this device.
-              </Text>
             </View>
 
             {history.length > 0 && (
@@ -2248,7 +2180,6 @@ export default function App() {
             </Pressable>
           ))}
 
-          <Text style={styles.footerText}>KEEP LEARNING · KEEP PRACTISING</Text>
         </ScrollView>
       )}
 
@@ -2262,9 +2193,6 @@ export default function App() {
             <View style={styles.pageHeadingCopy}>
               <Text style={styles.pageKicker}>SETTINGS</Text>
               <Text style={styles.pageTitle}>Profile</Text>
-              <Text style={styles.pageSub}>
-                Exam preferences and appearance for this device.
-              </Text>
             </View>
 
             <View style={styles.resultIcon}>
@@ -2317,10 +2245,6 @@ export default function App() {
                 );
               })}
             </ScrollView>
-
-            <Text style={styles.mutedBody}>
-              Applies when you open NewQ next time.
-            </Text>
           </View>
 
           <View style={styles.contentCard}>
@@ -2416,11 +2340,6 @@ export default function App() {
             {apiServerNote ? (
               <Text style={styles.serverNote}>{apiServerNote}</Text>
             ) : null}
-
-            <Text style={styles.mutedBody}>
-              Update this when your PC's hotspot address changes — the app
-              points at {apiServer ? `${apiServer}` : 'the built-in default'}.
-            </Text>
           </View>
 
           <View style={styles.contentCard}>
@@ -2447,23 +2366,13 @@ export default function App() {
                   'Sign-in failed · using this device only'}
               </Text>
             </View>
-
-            <Text style={styles.mutedBody}>
-              {cloudStatus === 'on'
-                ? 'History and quiz attempts sync securely across your devices.'
-                : 'Add a Firebase project in src/firebaseConfig.js to enable sync.'}
-            </Text>
           </View>
 
           <View style={styles.contentCard}>
             <CardLabel icon="information-circle-outline" label="ABOUT" />
             <Text style={styles.profileApiText}>NewQ mobile v0.1.0</Text>
-            <Text style={styles.mutedBody}>
-              News in. Questions out. Current-affairs prototype.
-            </Text>
           </View>
 
-          <Text style={styles.footerText}>NEWQ · NEWS TO KNOWLEDGE</Text>
         </ScrollView>
       )}
       </ScreenTransition>
