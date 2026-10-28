@@ -34,8 +34,11 @@ import {
   saveServerPreference,
 } from './src/storage';
 import {
+  createAccountWithEmail,
   isCloudEnabled,
   ensureSignedIn,
+  signInWithEmailPassword,
+  signOutUser,
   watchAuth,
 } from './src/firebase';
 import {
@@ -228,21 +231,102 @@ export default function App() {
       });
   };
 
+  // Stage 7: email/password sign-in or account creation from the
+  // Login screen. Success flips cloudUid; the screen-advance effect
+  // then routes to Home.
+  const submitLogin = async (mode) => {
+    const email = loginEmail.trim();
+    const password = loginPassword;
+
+    if (!email || !password) {
+      setLoginError('Enter your email and password.');
+      return;
+    }
+
+    setLoginBusy(true);
+    setLoginError(null);
+
+    const outcome = mode === 'signup'
+      ? await createAccountWithEmail(email, password)
+      : await signInWithEmailPassword(email, password);
+
+    setLoginBusy(false);
+
+    if (outcome.error) {
+      setLoginError(outcome.error);
+      return;
+    }
+
+    setCloudUid(outcome.uid);
+    setCloudEmail(outcome.email || 'Account');
+    setCloudStatus('on');
+  };
+
+  // Guest session: anonymous auth, same uid mechanics as before.
+  const continueAsGuest = async () => {
+    setLoginBusy(true);
+    setLoginError(null);
+
+    const uid = await ensureSignedIn();
+
+    setLoginBusy(false);
+
+    if (uid) {
+      setCloudUid(uid);
+      setCloudEmail('Guest session');
+      setCloudStatus('on');
+    } else {
+      setCloudStatus('error');
+      setLoginError('Could not start a guest session. Try again.');
+    }
+  };
+
+  // Stage 7: explicit sign-out from Profile. Local history stays.
+  const signOutAndReset = async () => {
+    await signOutUser();
+    setCloudUid(null);
+    setCloudEmail(null);
+    setCloudStatus('signedout');
+  };
+
+  // Latest auth snapshot for the splash-time routing decision (avoids
+  // stale-closure timers).
+  const authStateRef = useRef({
+    enabled: isCloudEnabled(),
+    uid: null,
+    resolved: false,
+  });
+
+  // Stage 7: Login screen state (email/password + guest fallback).
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState(null);
+  const [loginBusy, setLoginBusy] = useState(false);
+
   useEffect(() => {
     if (!isCloudEnabled()) {
+      authStateRef.current.resolved = true;
       return undefined;
     }
 
-    return watchAuth(async (uid) => {
-      if (uid) {
-        setCloudUid(uid);
-        setCloudStatus('on');
-        return;
-      }
+    // Note: no automatic anonymous sign-in here anymore — a signed-out
+    // session is an explicit state the Login screen owns. The guest
+    // button (and API token refresh) still uses ensureSignedIn().
+    return watchAuth((user) => {
+      authStateRef.current.enabled = true;
+      authStateRef.current.resolved = true;
+      authStateRef.current.uid = user?.uid || null;
 
-      const signedIn = await ensureSignedIn();
-      setCloudUid(signedIn);
-      setCloudStatus(signedIn ? 'on' : 'error');
+      setCloudUid(user?.uid || null);
+      setCloudEmail(
+        user?.isAnonymous ? 'Guest session' : user?.email || 'Account',
+      );
+
+      if (user?.uid) {
+        setCloudStatus('on');
+      } else {
+        setCloudStatus('signedout');
+      }
     });
   }, []);
 
@@ -301,9 +385,42 @@ export default function App() {
     if (screen !== 'splash') {
       return undefined;
     }
-    const timer = setTimeout(() => setScreen('home'), 2600);
-    return () => clearTimeout(timer);
+
+    // Stage 7: splash routes to Login when cloud is enabled but no
+    // session exists yet. Waits (max ~5s) for the auth listener to
+    // resolve so a persisted sign-in never flashes the Login screen.
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const minShown = elapsed >= 2600;
+      const gaveUp = elapsed >= 6000;
+
+      if (!minShown && !gaveUp) {
+        return;
+      }
+
+      if (!authStateRef.current.resolved && !gaveUp && isCloudEnabled()) {
+        return;
+      }
+
+      clearInterval(timer);
+
+      if (authStateRef.current.uid || !isCloudEnabled()) {
+        setScreen('home');
+      } else {
+        setScreen('login');
+      }
+    }, 200);
+
+    return () => clearInterval(timer);
   }, [screen]);
+
+  // Signed in from the Login screen (or guest) → advance to Home.
+  useEffect(() => {
+    if (screen === 'login' && cloudUid) {
+      setScreen('home');
+    }
+  }, [screen, cloudUid]);
 
   useEffect(() => {
     AsyncStorage.getItem(THEME_STORAGE_KEY)
@@ -694,7 +811,7 @@ export default function App() {
         backgroundColor={palette.navy}
       />
 
-      {screen !== 'splash' && (
+      {screen !== 'splash' && screen !== 'login' && (
         <AppHeader
           screen={screen}
           onHome={startNewAnalysis}
@@ -720,6 +837,117 @@ export default function App() {
 
           <SplashLoadBar />
         </View>
+      )}
+
+      {/* LOGIN SCREEN (Stage 7) */}
+      {screen === 'login' && (
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.loginHero}>
+            <View style={styles.splashLogo}>
+              <Ionicons name="book" size={34} color="#FFFFFF" />
+            </View>
+
+            <Text style={styles.loginTitle}>Welcome to NewQ</Text>
+          </View>
+
+          <View style={styles.contentCard}>
+            <TextInput
+              value={loginEmail}
+              onChangeText={setLoginEmail}
+              style={styles.serverInput}
+              placeholder="Email address"
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              maxLength={254}
+              accessibilityLabel="Email address"
+            />
+
+            <TextInput
+              value={loginPassword}
+              onChangeText={setLoginPassword}
+              style={[styles.serverInput, styles.loginGap]}
+              placeholder="Password (min 6 characters)"
+              placeholderTextColor={palette.muted}
+              secureTextEntry
+              maxLength={128}
+              accessibilityLabel="Password"
+            />
+
+            {loginError ? (
+              <Text style={styles.loginError}>{loginError}</Text>
+            ) : null}
+
+            <Pressable
+              onPress={() => submitLogin('signin')}
+              disabled={loginBusy}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in"
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.buttonPressed,
+                loginBusy && styles.buttonDisabled,
+              ]}
+            >
+              {loginBusy ? (
+                <ActivityIndicator size="small" color={palette.navy} />
+              ) : (
+                <>
+                  <Ionicons
+                    name="log-in-outline"
+                    size={20}
+                    color={palette.navy}
+                  />
+                  <Text style={styles.primaryButtonText}>Sign in</Text>
+                </>
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={() => submitLogin('signup')}
+              disabled={loginBusy}
+              accessibilityRole="button"
+              accessibilityLabel="Create account"
+              style={({ pressed }) => [
+                styles.outlineButton,
+                styles.outlineWide,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Ionicons
+                name="person-add-outline"
+                size={17}
+                color={palette.text}
+              />
+              <Text style={styles.outlineButtonText}>Create account</Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={continueAsGuest}
+            disabled={loginBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Continue as guest"
+            style={({ pressed }) => [
+              styles.loginGuest,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Ionicons
+              name="rocket-outline"
+              size={17}
+              color={palette.cyan}
+            />
+            <Text style={styles.loginGuestText}>
+              Continue as guest — no account needed
+            </Text>
+          </Pressable>
+        </ScrollView>
       )}
 
       {/* HOME SCREEN */}
@@ -2359,13 +2587,50 @@ export default function App() {
 
               <Text style={styles.profileApiText}>
                 {cloudStatus === 'on' &&
-                  'Syncing · signed in anonymously'}
+                  `Syncing · ${cloudEmail || 'signed in'}`}
                 {cloudStatus === 'connecting' && 'Connecting…'}
+                {cloudStatus === 'signedout' && 'Not signed in'}
                 {cloudStatus === 'off' && 'Cloud off · local device only'}
                 {cloudStatus === 'error' &&
                   'Sign-in failed · using this device only'}
               </Text>
             </View>
+          </View>
+
+          <View style={styles.contentCard}>
+            <CardLabel icon="person-circle-outline" label="ACCOUNT" />
+
+            {cloudUid ? (
+              <View style={styles.serverActions}>
+                <Pressable
+                  onPress={signOutAndReset}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sign out"
+                  style={styles.serverResetButton}
+                >
+                  <Ionicons
+                    name="log-out-outline"
+                    size={13}
+                    color={palette.muted}
+                  />
+                  <Text style={styles.serverResetText}>Sign out</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => setScreen('login')}
+                accessibilityRole="button"
+                accessibilityLabel="Open sign in screen"
+                style={styles.serverSaveButton}
+              >
+                <Ionicons
+                  name="log-in-outline"
+                  size={13}
+                  color={palette.navy}
+                />
+                <Text style={styles.examChipTextSelected}>Sign in</Text>
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.contentCard}>
@@ -3538,6 +3803,43 @@ const buildStyles = () => StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     marginTop: 6,
+  },
+  loginHero: {
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 26,
+    marginBottom: 20,
+  },
+  loginTitle: {
+    color: palette.text,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  loginGap: {
+    marginTop: 10,
+  },
+  loginError: {
+    color: palette.danger,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  loginGuest: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.accentBorder,
+    backgroundColor: palette.cyanSoft,
+  },
+  loginGuestText: {
+    color: palette.cyan,
+    fontSize: 12,
+    fontWeight: '700',
   },
   inputFooter: {
     flexDirection: 'row',
