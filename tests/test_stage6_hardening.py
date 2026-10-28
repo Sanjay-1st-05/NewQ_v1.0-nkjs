@@ -7,12 +7,16 @@ The rate-limit test uses an unsupported exam so requests fail fast at the
 import pytest
 from fastapi.testclient import TestClient
 
+from backend import auth as stage7_auth
 from backend import hardening
 from backend.main import app
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
+    # Hardening tests exercise open-mode behavior by design (they predate
+    # auth). Force the guard off regardless of service-account presence.
+    monkeypatch.setattr(stage7_auth, "is_auth_required", lambda: False)
     hardening._reset_buckets()
     original_limits = dict(hardening.RATE_LIMITS)
 

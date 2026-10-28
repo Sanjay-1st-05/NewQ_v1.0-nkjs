@@ -18,6 +18,8 @@ git-ignored and never ships with the repo or the mobile bundle.
 """
 
 import os
+import re
+import time
 
 # Project-root default: the backend runs from the repo root via uvicorn.
 DEFAULT_SERVICE_ACCOUNT = os.path.join(
@@ -91,9 +93,11 @@ def _ensure_initialized():
         cred = credentials.Certificate(path)
         firebase_admin.initialize_app(cred)
         _initialized = True
+        print("[AUTH] Firebase Admin SDK initialized from", path)
         return True
     except Exception as exc:  # bad JSON, wrong shape, etc.
         _init_error = f"{type(exc).__name__}: {exc}"
+        print(f"[AUTH] Firebase Admin init FAILED: {_init_error}")
         return False
 
 
@@ -105,7 +109,31 @@ def verify_firebase_token(token: str) -> dict:
     to 401 without import gymnastics.
     """
     _ensure_initialized()
-    decoded = firebase_auth.verify_id_token(token)
+
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+    except Exception as exc:
+        # Clock-skew tolerance: when the local clock lags Google's, a
+        # freshly minted token carries an iat slightly in the future and
+        # Firebase rejects it with "Token used too early". The error
+        # message contains both Unix timestamps — wait exactly the
+        # missing time (capped at 10 s) and retry once.
+        # Google's message format is "Token used too early, {now} < {iat}"
+        # (verified in google/auth/jwt.py), so group 1 is the server's
+        # current time and group 2 is the token's issue time. Wait exactly
+        # the missing span plus a one-second margin, then retry once.
+        message = str(exc)
+        skew_match = re.search(r"(\d{9,12})\s*<\s*(\d{9,12})", message)
+        if skew_match and "too early" in message.lower():
+            wait = float(skew_match.group(2)) - float(skew_match.group(1)) + 1.0
+            if wait > 0:
+                time.sleep(min(wait, 10.0))
+                decoded = firebase_auth.verify_id_token(token)
+            else:
+                raise
+        else:
+            raise
+
     # Anonymous users carry the "firebase" sign-in provider claim; reject
     # tokens that are not authentic Firebase sessions.
     if not decoded.get("sub"):
@@ -167,6 +195,9 @@ async def require_firebase_user(
     try:
         decoded = verify_firebase_token(token)
     except Exception as exc:
+        print(
+            f"[AUTH] Token verification failed: {type(exc).__name__}: {exc}"
+        )
         raise fastapi.HTTPException(
             status_code=401,
             detail=auth_error_detail(exc),
