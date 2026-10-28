@@ -26,3 +26,8 @@ Thumbs.db
 # Scratch files
 content.txt
 
+# Firebase service-account keys — secrets, never commit
+firebase-service-account.json
+firebase-service-account*.json
+*firebase-adminsdk*.json
+

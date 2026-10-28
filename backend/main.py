@@ -1,12 +1,13 @@
 
 import time
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from ai_engine import analyze_news, EXAMS
 from ai_engine.agent import AGENT_ENABLED, analyze_with_agent
 from ai_engine.gemini_engine import analyze_news_gemini
+from backend.auth import auth_state, require_firebase_user
 
 # Preferred agent runtime: the LangGraph state machine when available,
 # falling back to the built-in orchestrator loop otherwise.
@@ -47,13 +48,15 @@ class AnalyzeRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {
+    health_payload = {
         "status": "ok",
         "service": "newq-api",
         "version": "0.3.0",
         "agent_enabled": AGENT_ENABLED,
         "uptime_seconds": int(time.monotonic() - _STARTED_AT),
     }
+    health_payload.update(auth_state())
+    return health_payload
 
 
 @app.get("/api/exams")
@@ -75,7 +78,7 @@ def news_feed():
 
 
 @app.post("/api/analyze")
-def analyze(req: AnalyzeRequest):
+def analyze(req: AnalyzeRequest, user: dict = Depends(require_firebase_user)):
     if req.exam not in EXAMS:
         raise HTTPException(
             status_code=400,
@@ -141,7 +144,10 @@ def analyze(req: AnalyzeRequest):
 
 
 @app.post("/api/extract-text")
-async def extract_text(file: UploadFile = File(...)):
+async def extract_text(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_firebase_user),
+):
     """Extract visible article text from a photo of printed news.
 
     Returns a minimal, predictable payload; verification of
