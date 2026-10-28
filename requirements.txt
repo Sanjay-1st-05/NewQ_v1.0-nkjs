@@ -1,0 +1,7 @@
+streamlit>=1.40,<2
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+pydantic>=2.8,<3
+google-genai
+python-dotenv
+feedparser>=6.0,<7

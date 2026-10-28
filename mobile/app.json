@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "NewQ",
+    "slug": "newq-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.newq.app",
+      "usesCleartextTraffic": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.newq.app"
+    },
+    "plugins": [
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow NewQ to use your camera so you can photograph news articles for analysis."
+        }
+      ]
+    ]
+  }
+}
