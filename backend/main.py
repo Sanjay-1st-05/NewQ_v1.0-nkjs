@@ -7,6 +7,21 @@ from pydantic import BaseModel, Field
 from ai_engine import analyze_news, EXAMS
 from ai_engine.agent import AGENT_ENABLED, analyze_with_agent
 from ai_engine.gemini_engine import analyze_news_gemini
+
+# Preferred agent runtime: the LangGraph state machine when available,
+# falling back to the built-in orchestrator loop otherwise.
+_langgraph_agent = None
+if AGENT_ENABLED:
+    try:
+        from ai_engine.langgraph_agent import (
+            LANGGRAPH_AVAILABLE,
+            analyze_with_langgraph_agent,
+        )
+    except ImportError:
+        pass
+    else:
+        if LANGGRAPH_AVAILABLE:
+            _langgraph_agent = analyze_with_langgraph_agent
 from backend.hardening import (
     MAX_CONTENT_LENGTH,
     add_hardening,
@@ -90,7 +105,12 @@ def analyze(req: AnalyzeRequest):
             ),
         )
 
-    primary_engine = analyze_with_agent if AGENT_ENABLED else analyze_news_gemini
+    if AGENT_ENABLED and _langgraph_agent is not None:
+        primary_engine = _langgraph_agent
+    elif AGENT_ENABLED:
+        primary_engine = analyze_with_agent
+    else:
+        primary_engine = analyze_news_gemini
 
     try:
         # Primary engine: agent pipeline (classify → generate → validate →

@@ -1,5 +1,5 @@
 export const DEMO_MODE = false;
-export const API_BASE_URL = 'http://10.221.164.17:8000';
+export const API_BASE_URL = 'http://10.41.181.17:8000';
 
 // Expo's fetch implementation supports multipart FormData uploads on
 // current React Native versions where the built-in fetch throws

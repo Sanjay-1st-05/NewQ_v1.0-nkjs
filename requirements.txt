@@ -5,3 +5,4 @@ pydantic>=2.8,<3
 google-genai
 python-dotenv
 feedparser>=6.0,<7
+langgraph>=1.2,<2
