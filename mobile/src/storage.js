@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const HISTORY_KEY = 'newq-history';
 export const EXAM_KEY = 'newq-exam';
+export const SERVER_KEY = 'newq-api-server';
 export const MAX_HISTORY = 20;
 
 export function createHistoryEntry(result, exam) {
@@ -81,4 +82,24 @@ export async function loadExamPreference() {
   } catch (error) {
     return 'UPSC';
   }
+}
+
+// Stage 7b: user-editable NewQ API server address (survives hotspot IP
+// churn — update the PC address in Profile instead of editing api.js).
+export async function getServerPreference() {
+  try {
+    return (await AsyncStorage.getItem(SERVER_KEY)) || '';
+  } catch (error) {
+    return '';
+  }
+}
+
+export async function saveServerPreference(url) {
+  const trimmed = String(url || '').trim().replace(/\/+$/, '');
+  await AsyncStorage.setItem(SERVER_KEY, trimmed);
+  return trimmed;
+}
+
+export async function clearServerPreference() {
+  await AsyncStorage.removeItem(SERVER_KEY);
 }

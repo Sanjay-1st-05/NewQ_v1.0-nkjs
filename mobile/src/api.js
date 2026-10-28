@@ -1,6 +1,49 @@
 export const DEMO_MODE = false;
 export const API_BASE_URL = 'http://10.41.181.17:8000';
 
+// Stage 7b: the bundled base URL is only the DEFAULT. The Profile screen
+// can override it (stored via storage.js), so the PC's hotspot IP churn
+// no longer requires editing this file — update it from the app.
+import { getServerPreference } from './storage';
+import { getFirebaseAuthToken } from './firebase';
+
+// Resolves the server the app should talk to right now:
+// Profile override -> bundled API_BASE_URL.
+export async function getApiBaseUrl() {
+  try {
+    const override = await getServerPreference();
+    if (override) {
+      return override.replace(/\/+$/, '');
+    }
+  } catch (error) {
+    // Fall through to the bundled default on any storage failure.
+  }
+  return API_BASE_URL;
+}
+
+export function isValidServerUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+  const trimmed = url.trim().replace(/\/+$/, '');
+  return /^https?:\/\/\S+$/.test(trimmed);
+}
+
+// Stage 7a: protected endpoints require `Authorization: Bearer <id token>`
+// when the backend runs with Firebase auth enforcement. Local-only mode
+// (no Firebase config) simply produces no header — the backend's open
+// mode accepts those requests unchanged.
+async function authorizedHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = await getFirebaseAuthToken();
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
 // Expo's fetch implementation supports multipart FormData uploads on
 // current React Native versions where the built-in fetch throws
 // "Unsupported FormDataPart implementation".
@@ -39,12 +82,15 @@ function questions(content){
   ];
 }
 
-export async function analyzeNews(content,exam,count=5){
-  const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+export async function analyzeNews(content, exam, count = 5) {
+  const baseURL = await getApiBaseUrl();
+  const headers = await authorizedHeaders({
+    'Content-Type': 'application/json',
+  });
+
+  const response = await fetch(`${baseURL}/api/analyze`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       exam,
       content,
@@ -113,8 +159,12 @@ export async function extractTextFromImage(imageUri) {
     type: mime,
   });
 
-  const response = await expoFetch(`${API_BASE_URL}/api/extract-text`, {
+  const baseURL = await getApiBaseUrl();
+  const headers = await authorizedHeaders();
+
+  const response = await expoFetch(`${baseURL}/api/extract-text`, {
     method: 'POST',
+    headers,
     body: formData,
   });
 
@@ -141,7 +191,8 @@ export async function extractTextFromImage(imageUri) {
 }
 
 export async function fetchNewsFeed() {
-  const response = await fetch(`${API_BASE_URL}/api/news-feed`);
+  const baseURL = await getApiBaseUrl();
+  const response = await fetch(`${baseURL}/api/news-feed`);
 
   const data = await response.json().catch(() => ({}));
 

@@ -22,13 +22,16 @@ import { THEMES, THEME_STORAGE_KEY } from './src/theme';
 import {
   appendHistory,
   clearAllHistory,
+  clearServerPreference,
   createHistoryEntry,
+  getServerPreference,
   loadExamPreference,
   loadHistory,
   MAX_HISTORY,
   HISTORY_KEY,
   persistAttempt,
   saveExamPreference,
+  saveServerPreference,
 } from './src/storage';
 import {
   isCloudEnabled,
@@ -45,6 +48,7 @@ import {
   analyzeNews,
   extractTextFromImage,
   fetchNewsFeed,
+  isValidServerUrl,
 } from './src/api';
 
 const SAMPLE = `The Reserve Bank of India announced a new monetary policy framework aimed at maintaining price stability and supporting economic growth. The policy focuses on managing inflation, maintaining adequate liquidity and strengthening financial stability. The Reserve Bank said the new measures would help improve the resilience of India's financial system.`;
@@ -160,6 +164,69 @@ export default function App() {
   const [cloudStatus, setCloudStatus] = useState(
     isCloudEnabled() ? 'connecting' : 'off',
   );
+
+  // Stage 7b: user-editable API server (survives hotspot IP churn).
+  const [apiServer, setApiServer] = useState(''); // effective saved override
+  const [apiServerDraft, setApiServerDraft] = useState('');
+  const [apiServerNote, setApiServerNote] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+
+    const hydrateServer = async () => {
+      try {
+        const saved = await getServerPreference();
+        if (!alive) {
+          return;
+        }
+        setApiServer(saved);
+        setApiServerDraft(saved);
+      } catch (error) {
+        // Storage failure: keep the bundled default silently.
+      }
+    };
+
+    hydrateServer();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const saveApiServer = () => {
+    const draft = apiServerDraft.trim().replace(/\/+$/, '');
+
+    if (!draft) {
+      setApiServerNote('Enter an address like http://192.168.x.x:8000 first.');
+      return;
+    }
+
+    if (!isValidServerUrl(draft)) {
+      setApiServerNote('Invalid address — must start with http:// or https://.');
+      return;
+    }
+
+    saveServerPreference(draft)
+      .then((saved) => {
+        setApiServer(saved);
+        setApiServerDraft(saved);
+        setApiServerNote('Server saved — used from the next analysis.');
+      })
+      .catch(() => {
+        setApiServerNote('Could not save. Try again.');
+      });
+  };
+
+  const resetApiServer = () => {
+    clearServerPreference()
+      .then(() => {
+        setApiServer('');
+        setApiServerDraft('');
+        setApiServerNote('Reset to the app\'s default server.');
+      })
+      .catch(() => {
+        setApiServerNote('Could not reset. Try again.');
+      });
+  };
 
   useEffect(() => {
     if (!isCloudEnabled()) {
@@ -2301,6 +2368,62 @@ export default function App() {
           </View>
 
           <View style={styles.contentCard}>
+            <CardLabel icon="server-outline" label="NEWQ API SERVER" />
+
+            <TextInput
+              value={apiServerDraft}
+              onChangeText={setApiServerDraft}
+              style={styles.serverInput}
+              placeholder="http://<PC-address>:8000 (leave empty for default)"
+              placeholderTextColor={palette.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              maxLength={200}
+              accessibilityLabel="API server address"
+            />
+
+            <View style={styles.serverActions}>
+              <Pressable
+                onPress={saveApiServer}
+                accessibilityRole="button"
+                accessibilityLabel="Save API server address"
+                style={styles.serverSaveButton}
+              >
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={13}
+                  color={palette.navy}
+                />
+                <Text style={styles.examChipTextSelected}>Save</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={resetApiServer}
+                accessibilityRole="button"
+                accessibilityLabel="Reset API server to default"
+                style={styles.serverResetButton}
+              >
+                <Ionicons
+                  name="refresh-outline"
+                  size={13}
+                  color={palette.muted}
+                />
+                <Text style={styles.serverResetText}>Use default</Text>
+              </Pressable>
+            </View>
+
+            {apiServerNote ? (
+              <Text style={styles.serverNote}>{apiServerNote}</Text>
+            ) : null}
+
+            <Text style={styles.mutedBody}>
+              Update this when your PC's hotspot address changes — the app
+              points at {apiServer ? `${apiServer}` : 'the built-in default'}.
+            </Text>
+          </View>
+
+          <View style={styles.contentCard}>
             <CardLabel icon="cloudy-outline" label="NEWQ CLOUD" />
 
             <View style={styles.profileCloudRow}>
@@ -3457,6 +3580,55 @@ const buildStyles = () => StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.fieldBorder,
     padding: 12,
+  },
+  serverInput: {
+    minHeight: 42,
+    color: palette.text,
+    fontSize: 12,
+    textAlignVertical: 'center',
+    backgroundColor: palette.surfaceDeep,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.fieldBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  serverActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  serverSaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: palette.cyan,
+  },
+  serverResetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+  },
+  serverResetText: {
+    color: palette.muted,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  serverNote: {
+    color: palette.textSoft,
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 6,
   },
   inputFooter: {
     flexDirection: 'row',

@@ -72,3 +72,29 @@ export function watchAuth(callback) {
 
   return onAuthStateChanged(auth, (user) => callback(user?.uid || null));
 }
+
+// Stage 7: resolves a current Firebase ID token for API authorization.
+// Signs in anonymously first when there is no session yet. Resolves to
+// null in local-only mode (unconfigured) or on any failure, so callers
+// degrade gracefully to "request without auth header".
+export async function getFirebaseAuthToken() {
+  if (!auth) {
+    return null;
+  }
+
+  try {
+    if (!auth.currentUser) {
+      await ensureSignedIn();
+    }
+
+    if (!auth.currentUser) {
+      return null;
+    }
+
+    // Auto-refreshes when close to expiry (Firebase handles the 1h TTL).
+    return await auth.currentUser.getIdToken();
+  } catch (error) {
+    lastAuthError = error?.code || error?.message || 'token-error';
+    return null;
+  }
+}
