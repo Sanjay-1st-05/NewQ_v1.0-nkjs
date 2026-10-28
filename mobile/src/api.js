@@ -1,5 +1,5 @@
 export const DEMO_MODE = false;
-export const API_BASE_URL = 'http://10.221.164.17:8000';
+export const API_BASE_URL = 'http://10.88.155.17:8000';
 
 // Stage 7b: the bundled base URL is only the DEFAULT. The Profile screen
 // can override it (stored via storage.js), so the PC's hotspot IP churn
