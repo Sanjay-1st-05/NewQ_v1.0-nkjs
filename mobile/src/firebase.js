@@ -77,23 +77,17 @@ export function watchAuth(callback) {
 }
 
 // Stage 7: resolves a current Firebase ID token for API authorization.
-// Signs in anonymously first when there is no session yet. Resolves to
-// null in local-only mode (unconfigured) or on any failure, so callers
-// degrade gracefully to "request without auth header".
+// Returns the signed-in user's token (guest or email account), or null
+// when nobody is signed in / cloud is unconfigured — the backend's open
+// mode accepts unauthenticated requests, so callers degrade gracefully.
+// No automatic sign-in happens here: creating a session is owned by the
+// Login screen (explicit sign-in or guest button) only.
 export async function getFirebaseAuthToken() {
-  if (!auth) {
+  if (!auth || !auth.currentUser) {
     return null;
   }
 
   try {
-    if (!auth.currentUser) {
-      await ensureSignedIn();
-    }
-
-    if (!auth.currentUser) {
-      return null;
-    }
-
     // Auto-refreshes when close to expiry (Firebase handles the 1h TTL).
     return await auth.currentUser.getIdToken();
   } catch (error) {
