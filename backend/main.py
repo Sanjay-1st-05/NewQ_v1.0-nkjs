@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 from ai_engine import analyze_news, EXAMS
 from ai_engine.agent import AGENT_ENABLED, analyze_with_agent
 from ai_engine.gemini_engine import analyze_news_gemini
+from ai_engine.ollama_engine import (
+    OLLAMA_MODEL,
+    analyze_news_ollama,
+    is_ollama_available,
+)
 from backend.auth import auth_state, require_firebase_user
 
 # Preferred agent runtime: the LangGraph state machine when available,
@@ -75,6 +80,10 @@ def health():
         "uptime_seconds": int(time.monotonic() - _STARTED_AT),
     }
     health_payload.update(auth_state())
+    health_payload["offline_engine"] = {
+        "available": is_ollama_available(),
+        "model": OLLAMA_MODEL,
+    }
     return health_payload
 
 
@@ -134,20 +143,38 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_firebase_user)):
     else:
         primary_engine = analyze_news_gemini
 
+    cloud_result = None
     try:
         # Primary engine: agent pipeline (classify → generate → validate →
         # repair) falling back to the direct Gemini engine when disabled.
-        result = primary_engine(content, req.exam, req.question_count)
+        cloud_result = primary_engine(content, req.exam, req.question_count)
 
-        if result.get("question_count", 0) > 0:
-            return result
+        if cloud_result.get("question_count", 0) > 0:
+            return cloud_result
 
-        print("[WARN] AI engine returned no valid questions; using rule-based fallback.")
+        print("[WARN] AI engine returned no valid questions; trying offline engine.")
 
     except Exception as exc:
         # Keep the API available if Gemini is temporarily unavailable.
         print(
             f"[WARN] AI engine failed: {type(exc).__name__}: {exc}. "
+            "Trying offline engine."
+        )
+
+    # Stage 7c: local offline engine (Ollama) before the rule fallback, so
+    # analysis keeps working with no internet and no Gemini quota.
+    try:
+        if is_ollama_available():
+            offline_result = analyze_news_ollama(content, req.exam, req.question_count)
+
+            if offline_result.get("question_count", 0) > 0:
+                return offline_result
+
+            print("[WARN] Ollama returned no valid questions; using rule-based fallback.")
+
+    except Exception as exc:
+        print(
+            f"[WARN] Ollama engine failed: {type(exc).__name__}: {exc}. "
             "Using rule-based fallback."
         )
 
