@@ -32,3 +32,6 @@ firebase-service-account.json
 firebase-service-account*.json
 *firebase-adminsdk*.json
 
+# Stage 9: RAG index is rebuilt from live feeds at runtime
+backend/rag_index.json
+

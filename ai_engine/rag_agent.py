@@ -292,6 +292,7 @@ def retrieve_for_exam(index: Dict, exam: str, top_k: int = DEFAULT_TOP_K):
         vector = entry.get('embedding')
         score = cosine(profile_vector, vector) if vector else 0.0
         text = entry.get('text', '')
+        title, summary = (text.split('. ', 1) + [''])[:2]
 
         topics = []
         for phrase, phrase_vector in phrase_vectors:
@@ -301,7 +302,8 @@ def retrieve_for_exam(index: Dict, exam: str, top_k: int = DEFAULT_TOP_K):
             topics = [topic_of_best_phrase(text, phrases, embed)]
 
         scored.append({
-            'title': text.split('. ', 1)[0],
+            'title': title,
+            'summary': summary,
             'url': entry.get('url', ''),
             'source': entry.get('source', ''),
             'published': entry.get('published', ''),
