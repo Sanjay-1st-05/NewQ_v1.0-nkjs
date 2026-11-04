@@ -19,6 +19,12 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { THEMES, THEME_STORAGE_KEY } from './src/theme';
+// Stage 8a: pure progress roll-up for the History screen.
+import {
+  computeProgressSummary,
+  computeTopicBreakdown,
+  computeTopicOptions,
+} from './src/progress';
 import {
   appendHistory,
   clearAllHistory,
@@ -149,6 +155,30 @@ export default function App() {
   const [articleText, setArticleText] = useState('');
   const [history, setHistory] = useState([]);
   const [currentHistoryId, setCurrentHistoryId] = useState(null);
+
+  // Stage 8a: topic filter for the History screen ('' = show all topics).
+  const [topicFilter, setTopicFilter] = useState('');
+  const progressSummary = useMemo(
+    () => computeProgressSummary(history),
+    [history],
+  );
+  const practicedTopics = useMemo(
+    () => computeTopicBreakdown(history),
+    [history],
+  );
+  const topicOptions = useMemo(
+    () => computeTopicOptions(history),
+    [history],
+  );
+  const filteredHistory = useMemo(
+    () =>
+      topicFilter
+        ? history.filter(
+            (entry) => (entry?.topic || entry?.subject || 'General') === topicFilter,
+          )
+        : history,
+    [history, topicFilter],
+  );
   const [quizScrollRef, setQuizScrollRef] = useState(null);
   const [analyzeStep, setAnalyzeStep] = useState(0);
   const [quizIndex, setQuizIndex] = useState(0);
@@ -2350,17 +2380,109 @@ export default function App() {
             )}
           </View>
 
-          {history.length === 0 && (
+          {progressSummary.sessions > 0 && (
+            <View style={styles.contentCard}>
+              <CardLabel icon="trending-up-outline" label="PROGRESS" />
+              <View style={styles.historyProgressRow}>
+                <View style={styles.historyProgressStat}>
+                  <Text style={styles.historyProgressValue}>
+                    {progressSummary.streak}
+                  </Text>
+                  <Text style={styles.historyProgressLabel}>day streak</Text>
+                </View>
+                <View style={styles.historyProgressStat}>
+                  <Text style={styles.historyProgressValue}>
+                    {progressSummary.accuracy == null
+                      ? '—'
+                      : `${progressSummary.accuracy}%`}
+                  </Text>
+                  <Text style={styles.historyProgressLabel}>accuracy</Text>
+                </View>
+                <View style={styles.historyProgressStat}>
+                  <Text style={styles.historyProgressValue}>
+                    {progressSummary.sessions}
+                  </Text>
+                  <Text style={styles.historyProgressLabel}>sessions</Text>
+                </View>
+              </View>
+              {practicedTopics.length > 0 && (
+                <View style={styles.historyFocusRow}>
+                  <Ionicons
+                    name="flag-outline"
+                    size={13}
+                    color={palette.warning}
+                  />
+                  <Text style={styles.historyFocusText} numberOfLines={1}>
+                    Focus next: {practicedTopics[0].topic} ·{' '}
+                    {practicedTopics[0].accuracy}% accuracy
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {topicOptions.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.historyChipsRow}
+            >
+              <Pressable
+                onPress={() => setTopicFilter('')}
+                accessibilityRole="button"
+                accessibilityLabel="Show all topics"
+                style={[styles.examChip, !topicFilter && styles.examChipSelected]}
+              >
+                <Text
+                  style={[
+                    styles.examChipText,
+                    !topicFilter && styles.examChipTextSelected,
+                  ]}
+                >
+                  All
+                </Text>
+              </Pressable>
+              {topicOptions.map((topic) => {
+                const selected = topicFilter === topic;
+
+                return (
+                  <Pressable
+                    key={topic}
+                    onPress={() => setTopicFilter(selected ? '' : topic)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Filter history by ${topic}`}
+                    style={[
+                      styles.examChip,
+                      selected && styles.examChipSelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.examChipText,
+                        selected && styles.examChipTextSelected,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {topic}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          {filteredHistory.length === 0 && (
             <View style={styles.feedStateCard}>
               <Ionicons name="time-outline" size={22} color={palette.muted} />
               <Text style={styles.feedStateText}>
-                No saved analyses yet. Analyze a news article and it will appear
-                here.
+                {topicFilter
+                  ? `No saved sessions for ${topicFilter} yet.`
+                  : 'No saved analyses yet. Analyze a news article and it will appear here.'}
               </Text>
             </View>
           )}
 
-          {history.map((entry) => (
+          {filteredHistory.map((entry) => (
             <Pressable
               key={entry.id}
               onPress={() => reopenHistoryItem(entry)}
@@ -3684,6 +3806,45 @@ const buildStyles = () => StyleSheet.create({
   },
   historyClearText: {
     color: palette.danger,
+  },
+  historyProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  historyProgressStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  historyProgressValue: {
+    color: palette.text,
+    fontSize: 19,
+    fontWeight: '900',
+  },
+  historyProgressLabel: {
+    color: palette.muted,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  historyFocusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+  },
+  historyFocusText: {
+    flex: 1,
+    color: palette.textSoft,
+    fontSize: 10.5,
+    fontWeight: '600',
+  },
+  historyChipsRow: {
+    gap: 8,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
   },
   historyAttemptRow: {
     flexDirection: 'row',
