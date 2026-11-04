@@ -57,6 +57,7 @@ import {
   analyzeNews,
   extractTextFromImage,
   fetchNewsFeed,
+  fetchRagTopics,
   isValidServerUrl,
 } from './src/api';
 
@@ -153,6 +154,12 @@ export default function App() {
   const [feedError, setFeedError] = useState(null);
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [articleText, setArticleText] = useState('');
+
+  // Stage 9 phase 4: exam-correlated picks from the RAG agent. Failures
+  // stay silent — the strip must never block the analyze flow.
+  const [ragItems, setRagItems] = useState([]);
+  const [ragLoading, setRagLoading] = useState(false);
+  const [ragExam, setRagExam] = useState('');
   const [history, setHistory] = useState([]);
   const [currentHistoryId, setCurrentHistoryId] = useState(null);
 
@@ -481,7 +488,16 @@ export default function App() {
   const changeExam = (nextExam) => {
     setExam(nextExam);
     saveExamPreference(nextExam).catch(() => {});
+    loadRagPicks(nextExam);
   };
+
+  // Initial RAG picks for the restored exam once the app finishes loading.
+  useEffect(() => {
+    if (screen === 'home' && exam && ragExam !== exam) {
+      loadRagPicks(exam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, exam]);
 
   const openHistory = () => {
     setScreen('history');
@@ -807,6 +823,24 @@ export default function App() {
     loadFeed();
   };
 
+  // Stage 9 phase 4: load the RAG picks whenever the selected exam changes.
+  // Skipped while offline/degraded — the strip simply stays empty.
+  const loadRagPicks = async (targetExam) => {
+    if (!targetExam) {
+      return;
+    }
+    setRagLoading(true);
+    setRagExam(targetExam);
+    try {
+      const data = await fetchRagTopics(targetExam, 3);
+      setRagItems(data.items);
+    } catch (error) {
+      setRagItems([]);
+    } finally {
+      setRagLoading(false);
+    }
+  };
+
   // The analyzed text is exactly what the feed provided (headline plus the
   // feed summary when one exists) — it is shown editable before analysis.
   const openArticle = (item) => {
@@ -1053,6 +1087,64 @@ export default function App() {
               color={palette.muted}
             />
           </Pressable>
+
+          {ragExam === exam && ragLoading && (
+            <View style={styles.feedStateCard}>
+              <ActivityIndicator size="small" color={palette.cyan} />
+              <Text style={styles.feedStateText}>
+                Finding today's {exam} picks…
+              </Text>
+            </View>
+          )}
+
+          {ragExam === exam && !ragLoading && ragItems.length > 0 && (
+            <>
+              <SectionHeading
+                kicker={`MATCHED FOR ${exam.toUpperCase()}`}
+                title="From today's news"
+              />
+              {ragItems.map((item, index) => (
+                <Pressable
+                  key={`${item.source}-${index}-${item.title.slice(0, 24)}`}
+                  onPress={() => openArticle(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open matched article: ${item.title}`}
+                  style={({ pressed }) => [
+                    styles.newsItemCard,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <View style={styles.newsItemMeta}>
+                    <View style={styles.ragBandRow}>
+                      <View
+                        style={[
+                          styles.ragBandDot,
+                          item.band === 'strong' && styles.ragBandStrong,
+                          item.band === 'moderate' && styles.ragBandModerate,
+                        ]}
+                      />
+                      <Text style={styles.newsItemSource}>{item.source}</Text>
+                    </View>
+                    {item.published ? (
+                      <Text style={styles.newsItemDate}>
+                        {formatFeedDate(item.published)}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <Text style={styles.newsItemTitle} numberOfLines={2}>
+                    {item.title}
+                  </Text>
+
+                  {item.topics && item.topics.length > 0 && (
+                    <Text style={styles.newsItemNoSummary} numberOfLines={1}>
+                      {item.topics[0]}
+                    </Text>
+                  )}
+                </Pressable>
+              ))}
+            </>
+          )}
 
           <View style={styles.sectionRow}>
             <SectionHeading
@@ -3845,6 +3937,23 @@ const buildStyles = () => StyleSheet.create({
     gap: 8,
     paddingHorizontal: 2,
     paddingVertical: 2,
+  },
+  ragBandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ragBandDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: palette.muted,
+  },
+  ragBandStrong: {
+    backgroundColor: palette.success,
+  },
+  ragBandModerate: {
+    backgroundColor: palette.warning,
   },
   historyAttemptRow: {
     flexDirection: 'row',

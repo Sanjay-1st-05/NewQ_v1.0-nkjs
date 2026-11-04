@@ -295,3 +295,34 @@ export async function fetchNewsFeed() {
 
   return data;
 }
+
+// Stage 9 phase 4: exam-correlated items from the RAG agent (protected).
+export async function fetchRagTopics(exam, k = 3) {
+  const baseURL = await getApiBaseUrl();
+  const headers = await authorizedHeaders();
+  const response = await fetch(
+    `${baseURL}/api/rag/topics?exam=${encodeURIComponent(exam)}&k=${k}`,
+    { headers }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message =
+      data.detail ||
+      data.error ||
+      `Backend error: ${response.status}`;
+
+    throw new Error(
+      typeof message === 'string' ? message : JSON.stringify(message)
+    );
+  }
+
+  if (!Array.isArray(data.items)) {
+    throw new Error(
+      'The RAG response did not contain a valid items list.'
+    );
+  }
+
+  return data;
+}
