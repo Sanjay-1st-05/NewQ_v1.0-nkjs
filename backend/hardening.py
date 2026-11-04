@@ -46,6 +46,7 @@ RATE_LIMITS: Dict[str, int] = {  # requests per minute per client IP
     "/api/analyze": _int_env("NEWQ_RATE_LIMIT_ANALYZE", 10),
     "/api/extract-text": _int_env("NEWQ_RATE_LIMIT_EXTRACT", 20),
     "/api/news-feed": _int_env("NEWQ_RATE_LIMIT_DEFAULT", 120),
+    "/api/rag/topics": _int_env("NEWQ_RATE_LIMIT_RAG", 60),
 }
 DEFAULT_LIMIT = RATE_LIMITS["/api/news-feed"]
 

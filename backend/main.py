@@ -42,6 +42,14 @@ from backend.vision_service import (
     extract_text_from_image,
     is_provider_error,
 )
+from ai_engine.rag_agent import (
+    refresh_index as rag_refresh_index,
+    load_index as rag_load_index,
+    retrieve_for_exam as rag_retrieve_for_exam,
+    EXAM_TOPICS as RAG_EXAM_TOPICS,
+)
+
+RAG_REFRESH_SECONDS = int(os.getenv("NEWQ_RAG_REFRESH_SECONDS", "300"))
 
 app = FastAPI(title="NewQ API", version="0.3.0")
 add_hardening(app)
@@ -49,13 +57,32 @@ add_hardening(app)
 
 @asynccontextmanager
 async def lifespan(_application: FastAPI):
-    """Publish server presence to Firestore for mobile auto-discovery."""
+    """Publish server presence to Firestore for mobile auto-discovery and
+    keep the RAG feed index fresh."""
+    import asyncio
     from backend import server_presence
 
     await server_presence.start_presence(
         int(os.getenv("NEWQ_PORT", "8000"))
     )
+
+    async def rag_refresh_loop():
+        try:
+            await asyncio.to_thread(rag_refresh_index)
+        except Exception as exc:
+            print(f"[WARN] RAG initial refresh failed: "
+                  f"{type(exc).__name__}: {exc}")
+        while True:
+            await asyncio.sleep(RAG_REFRESH_SECONDS)
+            try:
+                await asyncio.to_thread(rag_refresh_index)
+            except Exception as exc:
+                print(f"[WARN] RAG refresh failed: "
+                      f"{type(exc).__name__}: {exc}")
+
+    rag_task = asyncio.create_task(rag_refresh_loop())
     yield
+    rag_task.cancel()
     server_presence.stop_presence()
 
 
@@ -84,6 +111,18 @@ def health():
         "available": is_ollama_available(),
         "model": OLLAMA_MODEL,
     }
+    try:
+        rag_state = rag_load_index()
+        health_payload["rag"] = (
+            {
+                "embedder": rag_state.get("embedder"),
+                "indexed": len(rag_state.get("entries", [])),
+            }
+            if rag_state
+            else {"indexed": 0}
+        )
+    except Exception:
+        health_payload["rag"] = {"indexed": 0}
     return health_payload
 
 
@@ -103,6 +142,39 @@ def news_feed():
             status_code=503,
             detail="News feeds are temporarily unavailable. Please try again.",
         ) from exc
+
+
+@app.get("/api/rag/topics")
+def rag_topics(
+    exam: str,
+    k: int = 5,
+    user: dict = Depends(require_firebase_user),
+):
+    """Exam-correlated feed items from the RAG index (Stage 9 phase 3).
+
+    Returns the top-k feed items most aligned with the exam's topic
+    taxonomy, each with its matched topics and a confidence band.
+    """
+    if exam not in RAG_EXAM_TOPICS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown exam category: {exam}. "
+            f"Available: {', '.join(sorted(RAG_EXAM_TOPICS))}",
+        )
+
+    index = rag_load_index()
+    if index is None:
+        raise HTTPException(
+            status_code=503,
+            detail="The RAG index is still building. Try again shortly.",
+        )
+
+    try:
+        return rag_retrieve_for_exam(
+            index, exam, top_k=max(1, min(int(k), 20)),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @app.post("/api/analyze")
